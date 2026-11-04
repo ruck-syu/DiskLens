@@ -1,0 +1,52 @@
+name: Release DMG
+
+# Every push to main builds a universal DiskLens.app, packages it as a DMG,
+# and publishes it as the latest GitHub release. The in-app updater reads
+# that release. Version = contents of ./VERSION + "." + the run number.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version
+        run: |
+          echo "VERSION=$(cat VERSION).${{ github.run_number }}" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=${{ github.run_number }}" >> "$GITHUB_ENV"
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Build app
+        run: UNIVERSAL=1 ./scripts/build-app.sh
+
+      - name: Package DMG
+        run: ./scripts/make-dmg.sh
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiskLens-${{ env.VERSION }}
+          path: build/DiskLens-${{ env.VERSION }}.dmg
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION" "build/DiskLens-$VERSION.dmg" \
+            --title "DiskLens $VERSION" \
+            --target "$GITHUB_SHA" \
+            --generate-notes \
+            --latest

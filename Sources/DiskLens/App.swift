@@ -33,6 +33,7 @@ final class AppStore {
     let explorer = ExplorerModel()
     let cleanup = CleanupModel()
     let largeFiles = LargeFilesModel()
+    let updater = Updater()
     var volumes: [VolumeInfo] = VolumeInfo.all()
 
     func refreshVolumes() { volumes = VolumeInfo.all() }
@@ -66,6 +67,9 @@ struct DiskLensApp: App {
         }
         .windowToolbarStyle(.unified)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { store.updater.checkFromMenu() }
+            }
             CommandGroup(after: .newItem) {
                 Button("Scan Home Folder") { store.scanInExplorer(NSHomeDirectory()) }
                     .keyboardShortcut("h", modifiers: [.command, .shift])
@@ -86,6 +90,7 @@ struct ContentView: View {
 
     var body: some View {
         @Bindable var store = store
+        @Bindable var updater = store.updater
         NavigationSplitView {
             List(selection: $store.selection) {
                 Section("Storage") {
@@ -95,7 +100,12 @@ struct ContentView: View {
                 }
             }
             .navigationSplitViewColumnWidth(min: 190, ideal: 210)
-            .safeAreaInset(edge: .bottom) { SidebarDiskMeter() }
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 0) {
+                    SidebarUpdateBadge(updater: store.updater)
+                    SidebarDiskMeter()
+                }
+            }
         } detail: {
             switch store.selection ?? .overview {
             case .overview: OverviewView()
@@ -104,6 +114,10 @@ struct ContentView: View {
             case .largeFiles: LargeFilesView()
             }
         }
+        .sheet(isPresented: $updater.isSheetPresented) {
+            UpdateSheet(updater: store.updater)
+        }
+        .task { await store.updater.autoCheckOnLaunch() }
     }
 }
 

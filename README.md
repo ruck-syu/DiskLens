@@ -16,7 +16,17 @@ Everything you delete goes to the **Trash**, so you can restore it until you emp
 open build/DiskLens.app
 ```
 
-For development: `swift run`.
+For development: `swift run`. To package a DMG locally: `./scripts/make-dmg.sh`.
+
+## Releases and updates
+
+Every push to `main` runs [`.github/workflows/release.yml`](.github/workflows/release.yml). It builds a universal (Apple silicon + Intel) app, packages `DiskLens-<version>.dmg`, and publishes it as the latest GitHub release. The version is the contents of [`VERSION`](VERSION) plus the run number (for example `1.0.12`). Bump `VERSION` for a major or minor release.
+
+In the app, **DiskLens → Check for Updates…** checks the latest release, shows its notes, downloads the DMG with a progress bar, then replaces the app and relaunches it. DiskLens also checks quietly on launch (you can turn this off in the update sheet) and shows an update card in the sidebar.
+
+The updater uses GitHub's public API, so the repository (or at least its releases) must be **public** for it to see new versions. To test against another feed, set `DISKLENS_UPDATE_URL` to a JSON file shaped like GitHub's `releases/latest` response.
+
+The app is ad-hoc signed, not notarized. The first time someone opens a downloaded DMG copy, macOS will block it: right-click the app and choose **Open**, or allow it in **System Settings → Privacy & Security**. Updates installed by the app itself don't hit this.
 
 Requires macOS 14+ and Xcode 15+.
 

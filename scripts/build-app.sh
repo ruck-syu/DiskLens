@@ -1,12 +1,19 @@
 #!/bin/bash
 # Builds a release DiskLens.app into ./build
+#   VERSION=1.0.7 BUILD_NUMBER=7  set the bundle version (defaults: ./VERSION, 1)
+#   UNIVERSAL=1                    build for both Apple silicon and Intel
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 APP="build/DiskLens.app"
+VERSION="${VERSION:-$(cat VERSION 2>/dev/null || echo 1.0)}"
+BUILD_NUMBER="${BUILD_NUMBER:-1}"
 
-swift build -c release
-BIN="$(swift build -c release --show-bin-path)/DiskLens"
+ARCH_FLAGS=()
+if [ "${UNIVERSAL:-0}" = "1" ]; then ARCH_FLAGS=(--arch arm64 --arch x86_64); fi
+
+swift build -c release ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"}
+BIN="$(swift build -c release ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} --show-bin-path)/DiskLens"
 
 if [ ! -f Resources/AppIcon.icns ]; then
   echo "Generating app icon…"
@@ -27,6 +34,10 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/DiskLens"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+/usr/libexec/PlistBuddy \
+  -c "Set :CFBundleShortVersionString $VERSION" \
+  -c "Set :CFBundleVersion $BUILD_NUMBER" \
+  "$APP/Contents/Info.plist"
 codesign --force --sign - "$APP" >/dev/null
 
-echo "Built $APP"
+echo "Built $APP ($VERSION, build $BUILD_NUMBER)"
