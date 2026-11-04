@@ -54,7 +54,7 @@ if [ -z "${SIGN_IDENTITY:-}" ] && [ -f "$SIGN_KEYCHAIN" ]; then
 fi
 
 if [ -n "${SIGN_IDENTITY:-}" ]; then
-  codesign --force --sign "$SIGN_IDENTITY" --keychain "$SIGN_KEYCHAIN" "$APP" >/dev/null 2>&1
+  codesign --force --sign "$SIGN_IDENTITY" --keychain "$SIGN_KEYCHAIN" "$APP"
   echo "Signed with stable identity $SIGN_IDENTITY"
 else
   echo "warning: no signing identity found; ad-hoc signing (macOS will forget permissions after each build)" >&2
