@@ -104,7 +104,7 @@ private struct ReleaseNotes: View {
             HStack {
                 Text("What's new").font(.headline)
                 Spacer()
-                if let size = release.dmg?.size {
+                if let size = release.dmg?.size, size > 0 {
                     Text(size.formattedBytes).font(.caption).foregroundStyle(.secondary)
                 }
                 Link("View on GitHub", destination: release.htmlUrl).font(.caption)
@@ -123,7 +123,7 @@ private struct ReleaseNotes: View {
 
     private var notes: AttributedString {
         let text = release.body?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !text.isEmpty else { return AttributedString("No release notes.") }
+        guard !text.isEmpty else { return AttributedString("Release notes are available on GitHub.") }
         return (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
             ?? AttributedString(text)
     }

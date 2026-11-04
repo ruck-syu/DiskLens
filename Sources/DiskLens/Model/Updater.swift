@@ -128,13 +128,39 @@ final class Updater {
         switch status {
         case 200: break
         case 404: throw UpdateError("No published release was found on GitHub. If the repository is private, the app can't see its releases.")
-        case 403, 429: throw UpdateError("GitHub's rate limit was reached. Try again in a few minutes.")
+        case 403, 429:
+            // The anonymous API allows 60 calls/hour per IP, which shared IPs (VPNs,
+            // iCloud Private Relay, offices) exhaust. github.com itself isn't limited.
+            return try await fetchLatestReleaseWithoutAPI()
         default: throw UpdateError("GitHub returned an unexpected response (HTTP \(status)).")
         }
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(GitHubRelease.self, from: data)
+    }
+
+    /// Finds the latest release from github.com's `/releases/latest` redirect
+    /// and builds the DMG URL from the workflow's naming scheme.
+    nonisolated private static func fetchLatestReleaseWithoutAPI() async throws -> GitHubRelease {
+        var request = URLRequest(url: URL(string: "https://github.com/\(repository)/releases/latest")!)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = 20
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let finalURL = response.url, finalURL.path.contains("/releases/tag/") else {
+            throw UpdateError("No published release was found on GitHub.")
+        }
+        let tag = finalURL.lastPathComponent
+        let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+        let dmgURL = URL(string: "https://github.com/\(repository)/releases/download/\(tag)/DiskLens-\(version).dmg")!
+        return GitHubRelease(
+            tagName: tag,
+            name: "DiskLens \(version)",
+            body: nil,
+            htmlUrl: finalURL,
+            publishedAt: nil,
+            assets: [.init(name: "DiskLens-\(version).dmg", browserDownloadUrl: dmgURL, size: 0)]
+        )
     }
 
     // MARK: Downloading

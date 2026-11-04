@@ -24,7 +24,7 @@ Every push to `main` runs [`.github/workflows/release.yml`](.github/workflows/re
 
 In the app, **DiskLens → Check for Updates…** checks the latest release, shows its notes, downloads the DMG with a progress bar, then replaces the app and relaunches it. DiskLens also checks quietly on launch (you can turn this off in the update sheet) and shows an update card in the sidebar.
 
-The updater uses GitHub's public API, so the repository (or at least its releases) must be **public** for it to see new versions. To test against another feed, set `DISKLENS_UPDATE_URL` to a JSON file shaped like GitHub's `releases/latest` response.
+The updater reads GitHub's public releases API. If that API is rate-limited (60 anonymous calls per hour per IP, easy to hit behind a VPN or iCloud Private Relay), it falls back to github.com's `/releases/latest` redirect and the `DiskLens-<version>.dmg` asset name, which aren't rate-limited. To test against another feed, set `DISKLENS_UPDATE_URL` to a JSON file shaped like GitHub's `releases/latest` response.
 
 ## Code signing
 
