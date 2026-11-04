@@ -2,6 +2,12 @@
 # Builds a release DiskLens.app into ./build
 #   VERSION=1.0.7 BUILD_NUMBER=7  set the bundle version (defaults: ./VERSION, 1)
 #   UNIVERSAL=1                    build for both Apple silicon and Intel
+#   SIGN_IDENTITY / SIGN_KEYCHAIN  code signing identity (SHA-1) and keychain
+#
+# Signing with the same certificate every time keeps the app's identity stable,
+# so macOS remembers permissions (Full Disk Access, folders, Automation) across
+# updates. Without an identity the app is ad-hoc signed and macOS asks again
+# after every build. Run scripts/setup-signing.sh once to create one.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -38,6 +44,21 @@ cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
   -c "Set :CFBundleShortVersionString $VERSION" \
   -c "Set :CFBundleVersion $BUILD_NUMBER" \
   "$APP/Contents/Info.plist"
-codesign --force --sign - "$APP" >/dev/null
+SIGN_DIR="$HOME/.disklens-signing"
+SIGN_KEYCHAIN="${SIGN_KEYCHAIN:-$SIGN_DIR/signing.keychain-db}"
+if [ -z "${SIGN_IDENTITY:-}" ] && [ -f "$SIGN_KEYCHAIN" ]; then
+  if [ -f "$SIGN_DIR/keychain-password.txt" ]; then
+    security unlock-keychain -p "$(cat "$SIGN_DIR/keychain-password.txt")" "$SIGN_KEYCHAIN"
+  fi
+  SIGN_IDENTITY="$(security find-identity -p codesigning "$SIGN_KEYCHAIN" | awk '/DiskLens Self-Signed/ {print $2; exit}')"
+fi
+
+if [ -n "${SIGN_IDENTITY:-}" ]; then
+  codesign --force --sign "$SIGN_IDENTITY" --keychain "$SIGN_KEYCHAIN" "$APP" >/dev/null 2>&1
+  echo "Signed with stable identity $SIGN_IDENTITY"
+else
+  echo "warning: no signing identity found; ad-hoc signing (macOS will forget permissions after each build)" >&2
+  codesign --force --sign - "$APP" >/dev/null
+fi
 
 echo "Built $APP ($VERSION, build $BUILD_NUMBER)"

@@ -29,8 +29,33 @@ jobs:
       - name: Show toolchain
         run: swift --version
 
+      - name: Import signing certificate
+        env:
+          SIGNING_CERT_P12_BASE64: ${{ secrets.SIGNING_CERT_P12_BASE64 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          if [ -z "$SIGNING_CERT_P12_BASE64" ]; then
+            echo "::warning::SIGNING_CERT_P12_BASE64 is not set; the app will be ad-hoc signed and macOS will ask for permissions again after each update."
+            exit 0
+          fi
+          KC="$RUNNER_TEMP/signing.keychain-db"
+          KCPASS="$(openssl rand -hex 16)"
+          echo "$SIGNING_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security create-keychain -p "$KCPASS" "$KC"
+          security set-keychain-settings "$KC"
+          security unlock-keychain -p "$KCPASS" "$KC"
+          security import "$RUNNER_TEMP/signing.p12" -k "$KC" -P "$SIGNING_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KCPASS" "$KC" >/dev/null
+          rm "$RUNNER_TEMP/signing.p12"
+          ID="$(security find-identity -p codesigning "$KC" | awk '/DiskLens Self-Signed/ {print $2; exit}')"
+          echo "SIGN_KEYCHAIN=$KC" >> "$GITHUB_ENV"
+          echo "SIGN_IDENTITY=$ID" >> "$GITHUB_ENV"
+
       - name: Build app
         run: UNIVERSAL=1 ./scripts/build-app.sh
+
+      - name: Show signature
+        run: codesign -d -r- build/DiskLens.app
 
       - name: Package DMG
         run: ./scripts/make-dmg.sh

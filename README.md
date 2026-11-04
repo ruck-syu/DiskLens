@@ -26,7 +26,21 @@ In the app, **DiskLens → Check for Updates…** checks the latest release, sho
 
 The updater uses GitHub's public API, so the repository (or at least its releases) must be **public** for it to see new versions. To test against another feed, set `DISKLENS_UPDATE_URL` to a JSON file shaped like GitHub's `releases/latest` response.
 
-The app is ad-hoc signed, not notarized. The first time someone opens a downloaded DMG copy, macOS will block it: right-click the app and choose **Open**, or allow it in **System Settings → Privacy & Security**. Updates installed by the app itself don't hit this.
+## Code signing
+
+macOS remembers permissions (Full Disk Access, folder access, controlling Finder) by an app's code signature. If every build is signed with the **same certificate**, those permissions survive updates. An ad-hoc signed build is identified by its exact binary, so macOS asks again after every update.
+
+One-time setup:
+
+```bash
+./scripts/setup-signing.sh   # creates a self-signed cert in ~/.disklens-signing (login keychain untouched)
+base64 -i ~/.disklens-signing/signing.p12 | gh secret set SIGNING_CERT_P12_BASE64
+gh secret set SIGNING_CERT_PASSWORD < ~/.disklens-signing/p12-password.txt
+```
+
+`build-app.sh` uses that certificate automatically, and CI uses the secrets. Keep `~/.disklens-signing` backed up. If you lose it and make a new certificate, macOS will ask for permissions one more time.
+
+The certificate is self-signed, not an Apple Developer ID, so the app isn't notarized. The first time someone opens a downloaded DMG copy, macOS will block it: right-click the app and choose **Open**, or allow it in **System Settings → Privacy & Security**. Updates installed by the app itself don't hit this.
 
 Requires macOS 14+ and Xcode 15+.
 
