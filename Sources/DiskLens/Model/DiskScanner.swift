@@ -38,7 +38,7 @@ final class ScanControl: @unchecked Sendable {
     }
 }
 
-/// Remembers hard-linked files so they are only counted once.
+/// Remembers (device, inode) pairs so hard-linked files and aliased directories are only counted once.
 private final class InodeSet: @unchecked Sendable {
     private struct Key: Hashable { let dev: Int32; let ino: UInt64 }
     private let lock = NSLock()
@@ -68,6 +68,7 @@ struct DiskScanner {
     private let allowedDevices: Set<dev_t>
     private let excludedPaths: Set<String>
     private let inodes = InodeSet()
+    private let directories = InodeSet()
 
     init(rootPath: String, control: ScanControl) {
         let resolved = URL(fileURLWithPath: rootPath).resolvingSymlinksInPath().path
@@ -78,16 +79,26 @@ struct DiskScanner {
         var st = stat()
         if lstat(resolved, &st) == 0 { devices.insert(st.st_dev) }
 
-        var excluded: Set<String> = []
+        // Magic aliases of the whole filesystem (/.nofollow/Users is /Users again).
+        var excluded: Set<String> = ["/.nofollow", "/.resolve", "/.vol"]
         if resolved == "/" {
             // On APFS, "/" is the sealed system volume and user data lives on the Data
             // volume, which is firmlinked into /Users, /Applications, etc. Allow both
             // devices but skip the Data volume's own mount point to avoid double counting.
             if lstat("/System/Volumes/Data", &st) == 0 { devices.insert(st.st_dev) }
-            excluded = ["/System/Volumes", "/Volumes", "/dev", "/net", "/home"]
+            excluded.formUnion(["/System/Volumes", "/Volumes", "/dev", "/net", "/home"])
         }
         self.allowedDevices = devices
         self.excludedPaths = excluded
+        if lstat(resolved, &st) == 0 { _ = directories.insert(dev: st.st_dev, ino: st.st_ino) }
+    }
+
+    /// Whether a directory should be descended into. Claims its inode so any other
+    /// path to the same directory (firmlinks, filesystem aliases) is skipped.
+    private func shouldDescend(_ path: String, _ st: stat) -> Bool {
+        allowedDevices.contains(st.st_dev)
+            && !excludedPaths.contains(path)
+            && directories.insert(dev: st.st_dev, ino: st.st_ino)
     }
 
     static func join(_ dir: String, _ name: String) -> String {
@@ -121,7 +132,7 @@ struct DiskScanner {
             guard lstat(full, &st) == 0 else { continue }
             let type = st.st_mode & S_IFMT
             if type == S_IFDIR {
-                guard allowedDevices.contains(st.st_dev), !excludedPaths.contains(full) else { continue }
+                guard shouldDescend(full, st) else { continue }
                 subdirs.append((full, entry))
             } else {
                 var size = Int64(st.st_blocks) * 512
@@ -204,7 +215,7 @@ struct DiskScanner {
                 guard lstat(full, &st) == 0 else { continue }
                 let type = st.st_mode & S_IFMT
                 if type == S_IFDIR {
-                    if allowedDevices.contains(st.st_dev), !excludedPaths.contains(full) { subdirs.append(full) }
+                    if shouldDescend(full, st) { subdirs.append(full) }
                 } else if type == S_IFREG {
                     count += 1
                     let size = Int64(st.st_blocks) * 512
